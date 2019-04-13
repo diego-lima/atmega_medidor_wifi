@@ -43,7 +43,7 @@ int main() {
    */
    // todo: explicar essas configurações abaixo
   TCCR0A |= 0b00000000;
-  TCCR0B |= 0b00000011;
+  TCCR0B |= 0b00000011; // seta a seleção de clock = clk/64
   TIMSK0 |= 0b00000001;
 
   /**
@@ -54,7 +54,11 @@ int main() {
 
   bool status_medidor = 0; // 0: medidor desligado, 1: medidor ligado
 
+  int contador_eventos = 0; // usado pra dar uma quebra de linha depois de 10 prints
 
+  int limite_inferior_OVF = 100; // o menor número de interrupções (overflows)do timer que eu conto
+
+  int limite_superior_OVF = 1400; // o maior número de interrupções (overflows)do timer que eu conto
 
   /**
    * LAÇO PRINCIPAL
@@ -77,10 +81,9 @@ int main() {
       ADCSRA |= _BV(ADSC); // começar conversão
       while (!(ADCSRA & 0b10000)); // esperar terminar conversão, checando o bit ADIF
 
-      if (ADC < 512)
-        limite_interrupcoes_contagem = 800;
-      else
-        limite_interrupcoes_contagem = 1800;
+      // aqui, transformamos um número que varia entre 0 e 1023 (do ADC)
+      // em um número que varia entre limite_inferior_OVF e limite_superior_OVF.
+      limite_interrupcoes_contagem = limite_inferior_OVF + (ADC / 1023.0) * (limite_superior_OVF - limite_inferior_OVF);
 
       /**
        * DISPARANDO O EVENTO QUE ACONTECE A INTERVALOS REGULARES
@@ -89,7 +92,14 @@ int main() {
       if (timer_acabou) {
         timer_acabou = 0; // resetar a flag
 
-        Serial.println("hi");
+        contador_eventos++;
+        if (contador_eventos > 10){
+          Serial.println("");
+          contador_eventos = 0;
+        }
+
+        
+        Serial.print("hi ");
       }
 
       
