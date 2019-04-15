@@ -20,11 +20,14 @@ int main() {
   /**
    * ENTRADAS, SAÍDAS E PULL-UP
    */
-  DDRB = 0b00000000; // PB0(pino 8) e PB1(pino 9) entradas para o botão de ligar e desligar
-  DDRC &= 0b11111011; // seta o PC2(pino A2) como entrada, que é por onde entra o ADC2 (potenciometro)
+  DDRB = 0b00000010; // PB0(pino 8) é entradas para o botão de ligar
+  DDRC = 0b0
+    |0b000    // PC2(pino A2)para o ADC2 (potenciometro), PC0(A0) entrada do botão de desligar
+    |0b111000 // PC3,4,5 (A3,A4,A5) saídas para o stack de leds
+    ; 
 
-  PORTB = 0b00000011; // pull-up no PB0 e PB1 para os botões de ligar e desligar
-
+  PORTB = 0b000000001; // pull-up no PB0 para o botão de ligar
+  PORTC = 0b000000001; // pull-up no PC0 para o botão de desligar
 
   /**
    * ADC
@@ -45,6 +48,16 @@ int main() {
   TCCR0A |= 0b00000000;
   TCCR0B |= 0b00000011; // seta a seleção de clock = clk/64
   TIMSK0 |= 0b00000001;
+
+
+  /**
+   * CONTADOR TIMER1 (usado no PWM)
+   */
+  TCCR1A = _BV(COM1A1) | _BV(WGM10) | _BV(WGM11);
+  TCCR1B = _BV(CS11) | _BV(WGM12);
+
+  OCR1A = 0; // inicializando a saída do PWM baixa
+
 
   /**
    * MISC
@@ -70,7 +83,7 @@ int main() {
     if (PINB & 0b00000001) { // botão de ligar apertado
       status_medidor = 1;
     }
-    if (PINB & 0b00000010) { // botão de desligar apertado
+    if (PINC & 0b00000001) { // botão de desligar apertado
       status_medidor = 0;
     }
 
@@ -84,6 +97,18 @@ int main() {
       // aqui, transformamos um número que varia entre 0 e 1023 (do ADC)
       // em um número que varia entre limite_inferior_OVF e limite_superior_OVF.
       limite_interrupcoes_contagem = limite_inferior_OVF + (ADC / 1023.0) * (limite_superior_OVF - limite_inferior_OVF);
+
+      // SENDO QUE OCR1A NA VDD VAI RECEBER O VALOR DO MEDIDOR DE WIFI
+      OCR1A = ADC;
+
+      if (ADC < 150)
+          PORTC = 0b00000000;
+      else if (ADC < 300)
+          PORTC = 0b00100000;
+      else if (ADC < 700)
+          PORTC = 0b00110000;
+      else if (ADC > 700)
+          PORTC = 0b00111000;
 
       /**
        * DISPARANDO O EVENTO QUE ACONTECE A INTERVALOS REGULARES
@@ -104,5 +129,9 @@ int main() {
 
       
     } // fim if (status_medidor)
+    else { // botão de desligar apertado
+      OCR1A = 0;
+      PORTC = 0b000000001; // pull-up no PC0 para o botão de desligar
+    }
   } // fim while (1)
 } // fim main
