@@ -1,8 +1,13 @@
+#include <SPI.h>
+
 volatile uint16_t limite_interrupcoes_contagem = 2500;
 volatile uint16_t num_interrupcoes_contagem = 0;
 volatile bool timer_acabou = 0;
+int8_t potaux; // variável auxiliar que recebe o valor da potência via SPI do nodemcu
+volatile int8_t aux;
 
-ISR(TIMER0_OVF_vect) {
+ISR(TIMER0_OVF_vect) 
+{
   /**
    * Esse bloco trata a interrupção de overflow do timer0.
    * Contamos limite_interrupcoes_contagem interrupções.
@@ -16,11 +21,28 @@ ISR(TIMER0_OVF_vect) {
   }
 }
 
+ISR(SPI_STC_vect)
+{
+
+/**
+ * Esse bloco trata a interrupção do SPI.
+ * Recebemos o sinal de leitura do nodemcu a cada 1 segundo
+ */
+ aux = SPDR;
+ 
+ if(aux != 0)
+  potaux = SPDR;
+}
+
 int main() {
   /**
    * ENTRADAS, SAÍDAS E PULL-UP
    */
-  DDRB = 0b00000010; // PB0(pino 8) é entradas para o botão de ligar
+
+  int8_t potencia_medida;
+  int potencia_adc;
+   
+  DDRB = 0b00010010; // PB0(pino 8) é entradas para o botão de ligar
   DDRC = 0b0
     |0b000    // PC2(pino A2)para o ADC2 (potenciometro), PC0(A0) entrada do botão de desligar
     |0b111000 // PC3,4,5 (A3,A4,A5) saídas para o stack de leds
@@ -58,12 +80,20 @@ int main() {
 
   OCR1A = 0; // inicializando a saída do PWM baixa
 
+  /**
+   * COMUNICAÇÃO SPI
+   */
+
+  //DDRB |= _BV(PB4); //Seta o pino PB4 como sendo de saída, o MOSI da comunicação SPI
+  SPCR |= _BV(SPE); //Seta SPE como sendo 1, para habilitar o SPI
+  SPCR |= _BV(SPIE); //Habilita a interrupção
+  SPCR &= ~(_BV(MSTR)); //Seta como slave
 
   /**
    * MISC
    */
   sei(); // enable de interrupções
-  Serial.begin(9600); // todo: tirar funcionalidades alto nível
+  Serial.begin(115200); // todo: tirar funcionalidades alto nível
 
   bool status_medidor = 0; // 0: medidor desligado, 1: medidor ligado
 
@@ -97,17 +127,23 @@ int main() {
       // aqui, transformamos um número que varia entre 0 e 1023 (do ADC)
       // em um número que varia entre limite_inferior_OVF e limite_superior_OVF.
       limite_interrupcoes_contagem = limite_inferior_OVF + (ADC / 1023.0) * (limite_superior_OVF - limite_inferior_OVF);
+      potencia_adc = 600 - (6*abs(potencia_medida));
 
+      Serial.println("negocio");
+      Serial.println(600 - 8*abs(potencia_medida));
+      
       // SENDO QUE OCR1A NA VDD VAI RECEBER O VALOR DO MEDIDOR DE WIFI
-      OCR1A = ADC;
+      OCR1A = potencia_adc;
 
-      if (ADC < 150)
-          PORTC = 0b00000000;
-      else if (ADC < 300)
+      if (potencia_adc < 50 || potencia_medida == 31){
+        OCR1A = 0;
+        PORTC = 0b00000000;
+      }
+      else if (potencia_adc < 150)
           PORTC = 0b00100000;
-      else if (ADC < 700)
+      else if (potencia_adc < 400)
           PORTC = 0b00110000;
-      else if (ADC > 700)
+      else if (potencia_adc > 400)
           PORTC = 0b00111000;
 
       /**
@@ -116,15 +152,14 @@ int main() {
       // quando timer_acabou = 1, o timer terminou de contar o intervalo esperado
       if (timer_acabou) {
         timer_acabou = 0; // resetar a flag
-
+        potencia_medida = potaux;
         contador_eventos++;
         if (contador_eventos > 10){
           Serial.println("");
           contador_eventos = 0;
         }
-
         
-        Serial.print("hi ");
+        //Serial.print("hi ");
       }
 
       
